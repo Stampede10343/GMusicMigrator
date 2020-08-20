@@ -3,8 +3,6 @@
 from gmusicapi import Mobileclient
 from dotenv import load_dotenv
 
-load_dotenv()
-
 def save_top_songs():
     with open('playlists/Thumbs up', 'w') as output:
         for song in api.get_top_songs():
@@ -20,8 +18,9 @@ def save_user_playlists():
                 file.write("{} - {}\n".format(t['track']['artist'], t['track']['title']))
 
 
+load_dotenv()
+
 api = Mobileclient()
-# api.perform_oauth()
 
 api.oauth_login(os.getenv('GMUSIC_OAUTH'))
 
