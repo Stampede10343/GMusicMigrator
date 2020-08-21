@@ -19,10 +19,10 @@ def save_track(saved_tracks, track):
     saved_tracks.append(track)
 
 def pick_track(saved_tracks, tracks):
-    sorted_tracks = list(sorted(tracks, key=lambda track: track['popularity']))
+    sorted_tracks = list(sorted(tracks, key=lambda track: track['popularity'], reverse=True))
     print("Please select a track:")
     for i, track in enumerate(sorted_tracks):
-        print("{})".format(i), track['name'], track['artists'][0]['name'])
+        print("{}) {} - {} - {}".format(i, track['name'], list(map(lambda t: t['name'], track['artists'])), track['album']['name']))
 
     while True:
         selection = input("Select a track (or -1 to skip): ")
@@ -37,8 +37,29 @@ def pick_track(saved_tracks, tracks):
             pass
 
 def add_tracks_to_playlist(saved_tracks, playlist):
-    print("Adding {} songs to playlist: {}", len(saved_tracks), playlist)
     LOG.info("Adding %s songs to playlist: %s", len(saved_tracks), playlist)
+    track_ids = list(map(lambda t: t['id'], saved_tracks))
+    user_id = sp.current_user()['id']
+    user_playlists = sp.user_playlists(user_id)['items']
+
+    if len(user_playlists) == 0:
+        created_playlist = sp.user_playlist_create(user_id, playlist)
+        playlist_id = created_playlist['id']
+        print(playlist_id)
+        sp.user_playlist_replace_tracks(user_id, playlist_id, track_ids)
+        pass
+    else:
+        print(user_playlists)
+        existing_playlists = list(filter(lambda p: playlist == p['name'], user_playlists))
+        if len(existing_playlists) == 0:
+            created_playlist = sp.user_playlist_create(user_id, playlist)
+            playlist_id = created_playlist['id']
+            sp.user_playlist_replace_tracks(user_id, playlist_id, track_ids)
+        elif len(existing_playlists) == 1:
+            sp.user_playlist_replace_tracks(user_id, existing_playlists[0]['id'], track_ids)
+        else:
+            LOG.err("Multiple playsts with name exists?? %s", existing_playlists)
+
 
 def find_song(line, saved_tracks):
     artist_song = line.replace('\n', '').split(' - ')
@@ -48,7 +69,7 @@ def find_song(line, saved_tracks):
     result = sp.search(artist + ' ' + song)
     tracks = result['tracks']['items']
     if len(tracks) == 0:
-        LOG.warning("Track not found: %s - %s".format(artist, song))
+        LOG.warning("Track not found: %s - %s", artist, song)
     elif len(tracks) == 1:
         LOG.debug("Ideal case")
         save_track(saved_tracks, tracks[0])
@@ -67,7 +88,7 @@ def find_song(line, saved_tracks):
 from dotenv import load_dotenv
 load_dotenv()
 
-scope = "playlist-modify-private"
+scope = "playlist-modify-public"
 auth = SpotifyOAuth(scope=scope,
                     username=os.getenv("SPOTIFY_USERNAME"),
                     client_id=os.getenv("SPOTIPY_CLIENT_ID"),
@@ -83,8 +104,7 @@ for playlist in glob.glob('playlists/*'):
         for line in file:
             find_song(line, saved_tracks)
             print()
-            break
 
         add_tracks_to_playlist(saved_tracks, playlist.split('/')[1])
-    pass
+    break
 
