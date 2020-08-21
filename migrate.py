@@ -3,6 +3,7 @@ import spotipy
 from spotipy import SpotifyOAuth
 import glob
 import os
+import re
 import sys
 import logging
 
@@ -18,16 +19,16 @@ def has_artist(artist, artists):
 def save_track(saved_tracks, track):
     saved_tracks.append(track)
 
-def pick_track(saved_tracks, tracks):
+def pick_track(saved_tracks, tracks, song, artist):
     sorted_tracks = list(sorted(tracks, key=lambda track: track['popularity'], reverse=True))
     if len(sorted_tracks) < 3:
         unique_tracks = set([ t['name'] + t['album']['name'] for t in sorted_tracks ])
         if len(unique_tracks) == 1:
-            print("Found duplicate track")
+            LOG.info("Unambiguous track picked: %s", sorted_tracks[0])
             save_track(saved_tracks, sorted_tracks[0])
             return
 
-    print("Please select a track:")
+    print("Please select a track for {} - {}:".format(song, artist))
     for i, track in enumerate(sorted_tracks):
         print("{}) {} - {} - {}".format(i, track['name'], list(map(lambda a: a['name'], track['artists'])), track['album']['name']))
 
@@ -36,6 +37,7 @@ def pick_track(saved_tracks, tracks):
         try:
             selection = int(selection)
             if selection == -1:
+                LOG.warning("Song skipped: %s - %s", song, artist)
                 break
             elif selection >= 0 and selection < len(sorted_tracks):
                 save_track(saved_tracks, sorted_tracks[selection])
@@ -78,31 +80,38 @@ def add_tracks_to_playlist(saved_tracks, playlist):
         else:
             LOG.err("Multiple playsts with name exists?? %s", existing_playlists)
 
+def check_for_exact_matches(saved_tracks, song, artist, tracks):
+    exact_matches = list(filter(lambda t: song in t['name'] and
+                                has_artist(artist, t['artists']), tracks))
+    if len(exact_matches) == 0:
+        LOG.debug("No exact matches")
+        if len(tracks) == 0:
+            LOG.warning("Track not found: %s - %s", artist, song)
+        else:
+            pick_track(saved_tracks, tracks, song, artist)
+    elif len(exact_matches) == 1:
+        LOG.debug('One exact matching result')
+        save_track(saved_tracks, exact_matches[0])
+    else:
+        pick_track(saved_tracks, exact_matches, song, artist)
 
 def find_song(line, saved_tracks):
     artist_song = line.replace('\n', '').split(' - ')
     artist = artist_song[0]
     song = artist_song[1]
 
-    result = sp.search(artist + ' ' + song)
+    result = sp.search(song + ' ' + artist)
     tracks = result['tracks']['items']
     if len(tracks) == 0:
-        LOG.warning("Track not found: %s - %s", artist, song)
-        # Try searching with parens removed
+        cleaned_song = re.sub(r'\(.*\)', '', song).replace('&', ' ')
+        LOG.info("Trying search without parens: %s", cleaned_song)
+        result = sp.search(cleaned_song + ' ' + artist)
+        check_for_exact_matches(saved_tracks, song, artist, result['tracks']['items'])
     elif len(tracks) == 1:
         LOG.debug("Ideal case")
         save_track(saved_tracks, tracks[0])
     else:
-        exact_matches = list(filter(lambda t: song in t['name'] and
-                                    has_artist(artist, t['artists']), tracks))
-        if len(exact_matches) == 0:
-            LOG.debug("No exact matches")
-            pick_track(saved_tracks, tracks)
-        elif len(exact_matches) == 1:
-            LOG.debug('One exact matching result')
-            save_track(saved_tracks, exact_matches[0])
-        else:
-            pick_track(saved_tracks, exact_matches)
+        check_for_exact_matches(saved_tracks, song, artist, tracks)
 
 
 from dotenv import load_dotenv
@@ -121,6 +130,8 @@ sp = spotipy.Spotify(auth_manager=auth)
 for playlist in glob.glob('playlists/*'):
     saved_tracks = []
     with open(playlist, 'r') as file:
+        LOG.info("Finding songs for playlist: %s", playlist)
+        print("Finding songs for playlist: {}".format(playlist))
         for line in file:
             try:
                 find_song(line, saved_tracks)
