@@ -7,14 +7,13 @@ import re
 import sys
 import logging
 
-logging.basicConfig(filename="output.log", level=logging.DEBUG)
+logging.basicConfig(filename="output.log", level=logging.INFO)
 LOG = logging.getLogger()
 LOG.setLevel(logging.DEBUG)
 
 def has_artist(artist, artists):
-    cleaned = list(map(lambda art: art['name'], artists))
-    a = list(filter(lambda a: artist == a, cleaned))
-    return artist in a
+    artist_names = list(map(lambda art: art['name'], artists))
+    return artist in list(filter(lambda a: artist.lower() == a.lower(), artist_names))
 
 def save_track(saved_tracks, track):
     saved_tracks.append(track)
@@ -30,7 +29,8 @@ def pick_track(saved_tracks, tracks, song, artist):
 
     print("Please select a track for {} - {}:".format(song, artist))
     for i, track in enumerate(sorted_tracks):
-        print("{}) {} - {} - {}".format(i, track['name'], list(map(lambda a: a['name'], track['artists'])), track['album']['name']))
+        artists = list(map(lambda a: a['name'], track['artists']))
+        print("{}) {} - {} - {}".format(i, track['name'], ', '.join([ a for a in artists ]), track['album']['name']))
 
     while True:
         selection = input("Select a track (or -1 to skip): ")
@@ -123,7 +123,6 @@ auth = SpotifyOAuth(scope=scope,
                     client_id=os.getenv("SPOTIPY_CLIENT_ID"),
                     client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
                     redirect_uri="http://localhost")
-print("Running with token: %s", auth.get_access_token())
 
 sp = spotipy.Spotify(auth_manager=auth)
 
