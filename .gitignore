@@ -2,4 +2,4 @@
 .env
 playlists/*
 *.pyc
-output.log
+*.log
